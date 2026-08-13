@@ -11,7 +11,7 @@
  */
 "use strict";
 
-const CACHE = "wedding-scanner-v1";
+const CACHE = "wedding-scanner-4ea0e761";
 
 const ASSETS = [
   "./",
