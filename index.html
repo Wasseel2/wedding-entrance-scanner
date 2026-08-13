@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#14110d">
+<title>Entrance Scanner</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Entrance">
+<meta name="mobile-web-app-capable" content="yes">
+<script src="lib/jsQR.js"></script>
+<style>
+  :root{
+    --bg:#14110d; --panel:#1e1a15; --line:#332c23; --ink:#f3ece0; --dim:#a2937c;
+    --gold:#d8b45f; --ok:#3fbc72; --ok-bg:#123a25; --bad:#e2564a; --bad-bg:#3c1714;
+    --warn:#e8a838; --warn-bg:#3d2c0e;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.5 "Segoe UI",system-ui,-apple-system,sans-serif;
+    display:flex;flex-direction:column;overflow:hidden}
+
+  header{display:flex;align-items:center;gap:12px;padding:12px 14px;
+    padding-top:calc(12px + env(safe-area-inset-top));
+    border-bottom:1px solid var(--line);background:var(--panel);flex:none}
+  header .title{font:600 15px/1.2 Georgia,serif;letter-spacing:.4px;flex:1;min-width:0;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  header .title small{display:block;font:400 11.5px/1.4 "Segoe UI",sans-serif;color:var(--dim)}
+  .counter{font:700 15px/1 "Segoe UI",sans-serif;text-align:right;flex:none}
+  .counter span{display:block;font:400 11px/1.5 "Segoe UI",sans-serif;color:var(--dim)}
+  .iconbtn{flex:none;width:40px;height:40px;border-radius:10px;border:1px solid var(--line);
+    background:#26211a;color:var(--ink);font-size:19px;cursor:pointer;display:grid;place-items:center}
+  .iconbtn:active{background:#332c23}
+
+  main{flex:1;position:relative;overflow:hidden}
+  .view{position:absolute;inset:0;display:none;flex-direction:column}
+  .view.on{display:flex}
+
+  /* ---- scan view ---- */
+  #camWrap{position:relative;flex:1;background:#000;overflow:hidden}
+  #video{width:100%;height:100%;object-fit:cover;display:block}
+  #reticle{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
+  #reticle div{width:min(68vw,300px);aspect-ratio:1;border-radius:22px;
+    box-shadow:0 0 0 100vmax rgba(0,0,0,.45);border:2px solid rgba(216,180,95,.85)}
+  #camNote{position:absolute;left:0;right:0;bottom:0;padding:14px 18px 18px;text-align:center;
+    color:var(--dim);font-size:13px;background:linear-gradient(transparent,rgba(0,0,0,.75))}
+  .camoff{position:absolute;inset:0;display:grid;place-items:center;padding:26px;text-align:center;
+    color:var(--dim);font-size:14px;line-height:1.65}
+
+  .tools{flex:none;display:flex;gap:8px;padding:10px;padding-bottom:calc(10px + env(safe-area-inset-bottom));
+    border-top:1px solid var(--line);background:var(--panel)}
+  .tools input{flex:1;min-width:0;padding:12px 14px;border-radius:10px;border:1px solid var(--line);
+    background:#100e0b;color:var(--ink);font:600 16px/1 "Consolas",monospace;letter-spacing:1.5px}
+  .tools input::placeholder{font-weight:400;letter-spacing:.5px;color:#6d6152}
+  .tools button{padding:12px 15px;border-radius:10px;border:1px solid var(--line);
+    background:#26211a;color:var(--ink);font:600 14px/1 inherit;cursor:pointer;flex:none}
+  .tools button.go{background:var(--gold);border-color:var(--gold);color:#221b0d}
+
+  /* ---- result overlay ---- */
+  #result{position:absolute;inset:0;z-index:20;display:none;flex-direction:column;
+    align-items:center;justify-content:center;text-align:center;padding:26px;cursor:pointer}
+  #result.on{display:flex}
+  #result .mark{font-size:76px;line-height:1;margin-bottom:8px}
+  #result .verdict{font:800 27px/1.15 "Segoe UI",sans-serif;letter-spacing:.5px;margin-bottom:20px}
+  #result .name{font:700 34px/1.2 Georgia,serif;word-break:break-word;max-width:14ch}
+  #result .sub{margin-top:12px;font-size:16px;opacity:.9}
+  #result .code{margin-top:20px;font:600 15px/1 "Consolas",monospace;letter-spacing:2px;opacity:.6}
+  #result .tap{position:absolute;bottom:calc(26px + env(safe-area-inset-bottom));font-size:13px;opacity:.65}
+  #result.ok{background:var(--ok-bg);color:#dff5e7} #result.ok .verdict{color:var(--ok)}
+  #result.bad{background:var(--bad-bg);color:#fadedb} #result.bad .verdict{color:var(--bad)}
+  #result.warn{background:var(--warn-bg);color:#f8e9c8} #result.warn .verdict{color:var(--warn)}
+
+  /* ---- list / setup views ---- */
+  .scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;
+    padding:14px;padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+  .search{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--line);
+    background:#100e0b;color:var(--ink);font:15px/1 inherit;margin-bottom:12px}
+  .g{display:flex;align-items:center;gap:12px;padding:11px 12px;border:1px solid var(--line);
+    border-radius:10px;margin-bottom:8px;background:var(--panel)}
+  .g .dot{width:9px;height:9px;border-radius:50%;background:#4b4237;flex:none}
+  .g.in .dot{background:var(--ok)}
+  .g .who{flex:1;min-width:0}
+  .g .who b{display:block;font-weight:600;font-size:15px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .g .who span{font-size:12px;color:var(--dim);font-family:Consolas,monospace;letter-spacing:.6px}
+  .g .act{font-size:12px;padding:7px 11px;border-radius:8px;border:1px solid var(--line);
+    background:#26211a;color:var(--dim);cursor:pointer;flex:none}
+  .g.in .act{color:var(--bad);border-color:#4a2b27}
+  .filters{display:flex;gap:8px;margin-bottom:12px}
+  .filters button{flex:1;padding:9px;border-radius:9px;border:1px solid var(--line);
+    background:#1e1a15;color:var(--dim);font:600 13px/1 inherit;cursor:pointer}
+  .filters button.on{background:var(--gold);border-color:var(--gold);color:#221b0d}
+  .card{border:1px solid var(--line);border-radius:12px;background:var(--panel);
+    padding:16px;margin-bottom:12px}
+  .card h3{margin:0 0 4px;font:600 12px/1 inherit;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--gold)}
+  .card p{margin:0 0 13px;color:var(--dim);font-size:13.5px}
+  .card .btns{display:flex;gap:8px;flex-wrap:wrap}
+  .card button{padding:11px 15px;border-radius:9px;border:1px solid var(--line);
+    background:#26211a;color:var(--ink);font:600 14px/1 inherit;cursor:pointer}
+  .card button.pri{background:var(--gold);border-color:var(--gold);color:#221b0d}
+  .card button.danger{color:var(--bad);border-color:#4a2b27}
+  .kv{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);font-size:14px}
+  .kv:last-child{border:0} .kv span{color:var(--dim)}
+  .empty{text-align:center;color:var(--dim);padding:48px 20px;font-size:14px;line-height:1.7}
+  .pill{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;
+    letter-spacing:.08em;text-transform:uppercase;background:#2c2519;color:var(--gold)}
+</style>
+</head>
+<body>
+
+<header>
+  <button class="iconbtn" id="tabScan" title="Scanner">&#9635;</button>
+  <div class="title" id="evTitle">Entrance Scanner<small id="evSub">No guest list loaded</small></div>
+  <div class="counter" id="count">0<span>checked in</span></div>
+  <button class="iconbtn" id="tabList" title="Guest list">&#9776;</button>
+  <button class="iconbtn" id="tabSetup" title="Setup">&#9881;</button>
+</header>
+
+<main>
+  <!-- ============== SCAN ============== -->
+  <section class="view on" id="vScan">
+    <div id="camWrap">
+      <video id="video" playsinline muted></video>
+      <div id="reticle" hidden><div></div></div>
+      <div class="camoff" id="camoff">Loading…</div>
+      <div id="camNote" hidden>Hold the guest's QR code inside the frame</div>
+    </div>
+    <div class="tools">
+      <input id="manual" placeholder="Or type the code" autocomplete="off"
+             autocapitalize="characters" spellcheck="false" inputmode="text">
+      <button class="go" id="btnManual">Check</button>
+      <button id="btnPhoto">&#128247;</button>
+      <input type="file" id="photo" accept="image/*" capture="environment" hidden>
+    </div>
+    <div id="result" tabindex="-1">
+      <div class="mark"></div>
+      <div class="verdict"></div>
+      <div class="name"></div>
+      <div class="sub"></div>
+      <div class="code"></div>
+      <div class="tap">Tap anywhere to scan the next guest</div>
+    </div>
+  </section>
+
+  <!-- ============== LIST ============== -->
+  <section class="view" id="vList">
+    <div class="scroll">
+      <input class="search" id="search" placeholder="Search a name or code" autocomplete="off">
+      <div class="filters">
+        <button data-f="all" class="on">All</button>
+        <button data-f="in">Checked in</button>
+        <button data-f="out">Not yet</button>
+      </div>
+      <div id="listBody"></div>
+    </div>
+  </section>
+
+  <!-- ============== SETUP ============== -->
+  <section class="view" id="vSetup">
+    <div class="scroll">
+      <div class="card" id="installCard" hidden>
+        <h3>Install the app</h3>
+        <p>Add the scanner to your home screen. It then opens like any other app
+           and works with no internet at all.</p>
+        <div class="btns"><button class="pri" id="btnInstall">Install</button></div>
+      </div>
+
+      <div class="card">
+        <h3>Guest list</h3>
+        <p id="setupInfo">Load the <b>guests.json</b> file that the generator produced.
+           It stays on this device, so you only do this once.</p>
+        <div class="btns">
+          <button class="pri" id="btnLoadGuests">Load guests.json</button>
+          <input type="file" id="fileGuests" accept=".json,application/json" hidden>
+          <button id="btnPasteGuests">Paste it instead</button>
+        </div>
+        <textarea id="pasteBox" hidden placeholder="Paste the contents of guests.json here"
+          style="width:100%;min-height:120px;margin-top:12px;padding:10px;border-radius:9px;
+                 border:1px solid var(--line);background:#100e0b;color:var(--ink);
+                 font:12px/1.5 Consolas,monospace;resize:vertical"></textarea>
+        <div class="btns" id="pasteBtns" hidden style="margin-top:10px">
+          <button class="pri" id="btnPasteGo">Use this list</button>
+          <button id="btnPasteCancel">Cancel</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Tonight</h3>
+        <div class="kv"><span>Invitations</span><b id="sTotal">0</b></div>
+        <div class="kv"><span>Checked in</span><b id="sIn">0</b></div>
+        <div class="kv"><span>Still expected</span><b id="sOut">0</b></div>
+        <div class="kv"><span>People inside</span><b id="sSeats">0</b></div>
+        <div class="kv"><span>Mode</span><b id="sMode">—</b></div>
+      </div>
+
+      <div class="card">
+        <h3>Check-ins backup</h3>
+        <p>Export before the night ends, or to merge with another door's device.
+           Importing never removes anyone &mdash; the two lists are combined.</p>
+        <div class="btns">
+          <button id="btnExport">Export check-ins</button>
+          <button id="btnExportCsv">Export .csv</button>
+          <button id="btnImport">Import &amp; merge</button>
+          <input type="file" id="fileImport" accept=".json,application/json" hidden>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Camera</h3>
+        <p id="camHelp">If live scanning is unavailable, use the
+          <b>&#128247;</b> button on the scan screen to take a photo of the code instead,
+          or type the code printed under the QR. Both work exactly the same.</p>
+        <div class="btns"><button id="btnRetryCam">Restart camera</button></div>
+      </div>
+
+      <div class="card">
+        <h3>Danger zone</h3>
+        <p>Clears every check-in on this device. The guest list is kept.</p>
+        <div class="btns"><button class="danger" id="btnReset">Reset all check-ins</button></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+"use strict";
+
+const $ = id => document.getElementById(id);
+const K_GUESTS = "wq.guests", K_CHECKINS = "wq.checkins";
+
+/* =======================================================================
+   Storage layer.
+   Local mode keeps everything in this browser. Server mode is used
+   automatically when the page is served by server.js, so several doors
+   share one live list.
+   ===================================================================== */
+const Store = {
+  mode: "local",         // "server" while the shared server answers, else "local"
+  wasServer: false,      // true once we have seen the server, so we keep retrying
+  degraded: false,       // server was there and then vanished
+  meta: {},
+  guests: [],
+  byCode: new Map(),
+  checkins: {},          // code -> ISO timestamp
+
+  async init(){
+    try{
+      const r = await fetch("api/state", { cache:"no-store" });
+      if (r.ok){
+        const s = await r.json();
+        this.mode = "server"; this.wasServer = true; this.degraded = false;
+        this._setGuests(s.guests || [], s.meta || {});
+        this.checkins = s.checkins || {};
+        this._cache();     // so this device can carry on alone if the server dies
+        return;
+      }
+    }catch(e){ /* not served by server.js */ }
+
+    this.mode = "local";
+    try{
+      const g = JSON.parse(localStorage.getItem(K_GUESTS) || "null");
+      if (g) this._setGuests(g.guests || [], g.meta || {});
+      this.checkins = JSON.parse(localStorage.getItem(K_CHECKINS) || "{}");
+    }catch(e){ this.checkins = {}; }
+  },
+
+  _setGuests(list, meta){
+    this.guests = list;
+    this.meta = meta || {};
+    this.byCode = new Map(list.map(g => [g.code, g]));
+  },
+
+  _cache(){
+    try{
+      localStorage.setItem(K_GUESTS, JSON.stringify({ meta:this.meta, guests:this.guests }));
+      localStorage.setItem(K_CHECKINS, JSON.stringify(this.checkins));
+    }catch(e){ /* private mode or full disk: we simply lose the offline copy */ }
+  },
+  _persist(){
+    try{ localStorage.setItem(K_CHECKINS, JSON.stringify(this.checkins)); }catch(e){}
+  },
+
+  // The server stopped answering mid-event. Keep the door moving on this
+  // device alone; the poll below re-syncs as soon as the server is back.
+  _degrade(){
+    if (this.mode === "server"){
+      this.mode = "local"; this.degraded = true;
+      this._cache();
+    }
+  },
+
+  async _post(route, body){
+    const r = await fetch("api/" + route, {
+      method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify(body || {})
+    });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "server error");
+    return r.json();
+  },
+
+  async setGuestFile(data){
+    if (this.mode === "server"){
+      try{
+        await this._post("guests", { meta:data.meta || {}, guests:data.guests });
+        await this.refresh();
+        return;
+      }catch(e){ this._degrade(); }
+    }
+    this._setGuests(data.guests || [], data.meta || {});
+    this._cache();
+  },
+
+  _localCheckin(code){
+    const guest = this.byCode.get(code);
+    if (!guest) return { status:"invalid" };
+    if (this.checkins[code]) return { status:"used", guest, at:this.checkins[code] };
+    this.checkins[code] = new Date().toISOString();
+    this._persist();
+    return { status:"ok", guest, at:this.checkins[code] };
+  },
+
+  /* Returns {status:'ok'|'used'|'invalid', guest, at} */
+  async checkin(code){
+    if (this.mode === "server"){
+      try{
+        const res = await this._post("checkin", { code });
+        if (res.checkins) this.checkins = res.checkins;
+        return res;
+      }catch(e){ this._degrade(); }
+    }
+    return this._localCheckin(code);
+  },
+
+  async undo(code){
+    if (this.mode === "server"){
+      try{
+        const res = await this._post("undo", { code });
+        this.checkins = res.checkins || {};
+        return;
+      }catch(e){ this._degrade(); }
+    }
+    delete this.checkins[code];
+    this._persist();
+  },
+
+  async reset(){
+    if (this.mode === "server"){
+      try{
+        const res = await this._post("reset");
+        this.checkins = res.checkins || {};
+        return;
+      }catch(e){ this._degrade(); }
+    }
+    this.checkins = {};
+    this._persist();
+  },
+
+  /* Union of two check-in maps, keeping whichever timestamp is earlier. */
+  _mergeLocal(incoming){
+    let added = 0;
+    for (const [code, at] of Object.entries(incoming)){
+      if (typeof at !== "string") continue;
+      if (!this.checkins[code]){ this.checkins[code] = at; added++; }
+      else if (at < this.checkins[code]) this.checkins[code] = at;
+    }
+    return added;
+  },
+
+  async merge(incoming){
+    if (this.mode === "server"){
+      try{
+        const res = await this._post("merge", { checkins: incoming });
+        this.checkins = res.checkins || this.checkins;
+        return res.added || 0;
+      }catch(e){ this._degrade(); }
+    }
+    const added = this._mergeLocal(incoming);
+    this._persist();
+    return added;
+  },
+
+  async refresh(){
+    if (!this.wasServer) return;
+    try{
+      // While degraded, hand this device's offline check-ins back to the server
+      // first, so nothing admitted during the outage is lost.
+      if (this.degraded){
+        const res = await this._post("merge", { checkins: this.checkins });
+        this.checkins = res.checkins || this.checkins;
+        this.mode = "server"; this.degraded = false;
+      }
+      const r = await fetch("api/state", { cache:"no-store" });
+      if (!r.ok) throw new Error("bad state response");
+      const s = await r.json();
+      this._setGuests(s.guests || [], s.meta || {});
+      this.checkins = s.checkins || {};
+      this.mode = "server"; this.degraded = false;
+      this._cache();
+    }catch(e){
+      this._degrade();     // still down; carry on locally
+    }
+  },
+
+  stats(){
+    const codes = Object.keys(this.checkins).filter(c => this.byCode.has(c));
+    const seats = codes.reduce((s,c) => s + (this.byCode.get(c).seats || 1), 0);
+    return { total:this.guests.length, in:codes.length,
+             out:this.guests.length - codes.length, seats };
+  }
+};
+
+/* =======================================================================
+   Feedback: a short tone plus a vibration, so the doorman does not have to
+   look at the screen for a normal admit.
+   ===================================================================== */
+let audioCtx = null;
+function beep(kind){
+  try{
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    const seq = kind === "ok"   ? [[880,0,.09],[1320,.09,.13]]
+              : kind === "used" ? [[430,0,.16],[430,.2,.16]]
+              :                   [[190,0,.36]];
+    for (const [freq, at, dur] of seq){
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = kind === "ok" ? "sine" : "square";
+      o.frequency.value = freq;
+      const t = audioCtx.currentTime + at;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.25, t + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(t); o.stop(t + dur + 0.02);
+    }
+  }catch(e){ /* audio is a nicety, never block the door on it */ }
+  try{
+    navigator.vibrate?.(kind === "ok" ? 90 : kind === "used" ? [70,60,70] : [180,70,180]);
+  }catch(e){}
+}
+
+/* =======================================================================
+   Views
+   ===================================================================== */
+const views = { scan:$("vScan"), list:$("vList"), setup:$("vSetup") };
+let current = "scan";
+function show(name){
+  current = name;
+  for (const k in views) views[k].classList.toggle("on", k === name);
+  if (name === "list") renderList();
+  if (name === "setup") renderStats();
+  if (name === "scan") resumeScan();
+}
+$("tabScan").onclick  = () => show("scan");
+$("tabList").onclick  = () => show("list");
+$("tabSetup").onclick = () => show("setup");
+
+function renderHeader(){
+  const m = Store.meta || {};
+  const couple = [m.groom, m.bride].filter(Boolean).join(" & ");
+  $("evTitle").firstChild.textContent = couple || "Entrance Scanner";
+  const s = Store.stats();
+  const where = Store.degraded ? "offline — will re-sync"
+              : Store.mode === "server" ? "shared" : "this device";
+  $("evSub").textContent = Store.guests.length
+    ? `${s.seats} people inside · ${where}`
+    : "No guest list loaded";
+  $("evSub").style.color = Store.degraded ? "var(--warn)" : "";
+  $("count").firstChild.textContent = String(s.in);
+}
+
+function renderStats(){
+  const s = Store.stats();
+  $("sTotal").textContent = s.total;
+  $("sIn").textContent    = s.in;
+  $("sOut").textContent   = s.out;
+  $("sSeats").textContent = s.seats;
+  $("sMode").textContent  = Store.degraded ? "Server lost — working offline"
+    : Store.mode === "server" ? "Shared (server)" : "This device only";
+  $("setupInfo").innerHTML = Store.guests.length
+    ? `<b>${Store.guests.length}</b> guests loaded${Store.meta.groom ? " for " +
+       [Store.meta.groom, Store.meta.bride].filter(Boolean).join(" & ") : ""}.
+       Loading another file replaces this list.`
+    : `Load the <b>guests.json</b> file that the generator produced.
+       It stays on this device, so you only do this once.`;
+}
+
+/* ---- guest list view ---- */
+let filter = "all";
+document.querySelectorAll(".filters button").forEach(b => b.onclick = () => {
+  document.querySelectorAll(".filters button").forEach(x => x.classList.remove("on"));
+  b.classList.add("on"); filter = b.dataset.f; renderList();
+});
+$("search").addEventListener("input", renderList);
+
+function fmtTime(iso){
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
+}
+
+function renderList(){
+  const q = $("search").value.trim().toLowerCase();
+  const body = $("listBody");
+  if (!Store.guests.length){
+    body.innerHTML = `<div class="empty">No guest list yet.<br>Open the gear icon and load
+      <b>guests.json</b>.</div>`;
+    return;
+  }
+  const rows = Store.guests.filter(g => {
+    const isIn = !!Store.checkins[g.code];
+    if (filter === "in" && !isIn) return false;
+    if (filter === "out" && isIn) return false;
+    if (!q) return true;
+    return g.name.toLowerCase().includes(q) || g.code.toLowerCase().includes(q);
+  });
+  if (!rows.length){ body.innerHTML = `<div class="empty">Nobody matches that.</div>`; return; }
+
+  const frag = document.createDocumentFragment();
+  for (const g of rows){
+    const at = Store.checkins[g.code];
+    const row = document.createElement("div");
+    row.className = "g" + (at ? " in" : "");
+    row.innerHTML =
+      `<div class="dot"></div>
+       <div class="who"><b></b><span></span></div>
+       <button class="act"></button>`;
+    row.querySelector("b").textContent = g.name;
+    row.querySelector("span").textContent =
+      `${g.code}${g.seats > 1 ? " · " + g.seats + " pers." : ""}${at ? " · in at " + fmtTime(at) : ""}`;
+    const btn = row.querySelector(".act");
+    btn.textContent = at ? "Undo" : "Admit";
+    btn.onclick = async () => {
+      if (at){
+        if (!confirm(`Cancel the check-in of ${g.name}?`)) return;
+        await Store.undo(g.code);
+      } else {
+        await Store.checkin(g.code);
+      }
+      renderList(); renderHeader();
+    };
+    frag.appendChild(row);
+  }
+  body.replaceChildren(frag);
+}
+
+/* =======================================================================
+   Check-in flow
+   ===================================================================== */
+const res = $("result");
+let busy = false, lastCode = "", lastAt = 0;
+
+function normalizeCode(raw){
+  const s = String(raw || "").toUpperCase().replace(/[^0-9A-Z]/g, "");
+  return s.length === 12 ? `${s.slice(0,4)}-${s.slice(4,8)}-${s.slice(8,12)}` : s;
+}
+
+async function handleCode(raw){
+  const code = normalizeCode(raw);
+  if (!code) return;
+  const now = Date.now();
+  if (busy || (code === lastCode && now - lastAt < 2500)) return;   // ignore camera repeats
+  lastCode = code; lastAt = now; busy = true;
+
+  let out;
+  try{
+    out = await Store.checkin(code);
+  }catch(err){
+    out = { status:"error", message: err.message };
+  }
+
+  if (out.status === "ok"){
+    beep("ok");
+    paint("ok", "✓", "WELCOME", out.guest.name,
+      out.guest.seats > 1 ? `${out.guest.seats} people` : "1 person", code);
+  } else if (out.status === "used"){
+    beep("used");
+    paint("warn", "⚠", "ALREADY USED", out.guest.name,
+      `This invitation was already scanned at ${fmtTime(out.at)}`, code);
+  } else if (out.status === "invalid"){
+    beep("bad");
+    paint("bad", "✕", "NOT VALID", "Unknown code",
+      "This code is not on the guest list.", code);
+  } else {
+    beep("bad");
+    paint("bad", "✕", "ERROR", "Could not check", out.message || "", code);
+  }
+  renderHeader();
+}
+
+function paint(kind, mark, verdict, name, sub, code){
+  res.className = "on " + kind;
+  res.querySelector(".mark").textContent    = mark;
+  res.querySelector(".verdict").textContent = verdict;
+  res.querySelector(".name").textContent    = name;
+  res.querySelector(".sub").textContent     = sub;
+  res.querySelector(".code").textContent    = code;
+  clearTimeout(paint._t);
+  paint._t = setTimeout(dismiss, kind === "ok" ? 2200 : 4500);
+}
+
+function dismiss(){
+  clearTimeout(paint._t);
+  res.className = "";
+  busy = false;
+}
+res.addEventListener("click", dismiss);
+
+$("btnManual").onclick = () => {
+  const v = $("manual").value;
+  $("manual").value = "";
+  $("manual").blur();
+  handleCode(v);
+};
+$("manual").addEventListener("keydown", e => { if (e.key === "Enter") $("btnManual").click(); });
+
+/* =======================================================================
+   Camera
+   ===================================================================== */
+const video = $("video"), camoff = $("camoff");
+const work = document.createElement("canvas");
+const wctx = work.getContext("2d", { willReadFrequently:true });
+let stream = null, rafId = 0;
+
+function camMessage(html){
+  camoff.innerHTML = html;
+  camoff.hidden = false;
+  $("reticle").hidden = true;
+  $("camNote").hidden = true;
+}
+
+async function startCamera(){
+  stopCamera();
+  if (!navigator.mediaDevices?.getUserMedia){
+    camMessage(`Live camera is not available here.<br><br>
+      Use the <b>&#128247;</b> button below to photograph the code,
+      or type the code printed under it.`);
+    return;
+  }
+  camMessage("Starting the camera…");
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode:{ ideal:"environment" }, width:{ ideal:1280 }, height:{ ideal:720 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+    camoff.hidden = true;
+    $("reticle").hidden = false;
+    $("camNote").hidden = false;
+    loop();
+  }catch(err){
+    const secure = window.isSecureContext;
+    camMessage(
+      `Camera unavailable &mdash; ${err.name === "NotAllowedError" ? "permission was refused" : err.name}.` +
+      (!secure ? `<br><br>Phones only allow the live camera on an <b>https://</b> page.
+                  Start <b>server.js</b> on the laptop and open the address it prints.` : "") +
+      `<br><br>You can still use the <b>&#128247;</b> photo button or type the code &mdash;
+       both check the guest exactly the same way.`);
+  }
+}
+
+function stopCamera(){
+  cancelAnimationFrame(rafId);
+  if (stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
+  video.srcObject = null;
+}
+
+function loop(){
+  rafId = requestAnimationFrame(loop);
+  if (current !== "scan" || busy) return;
+  if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
+
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) return;
+
+  // Only decode the middle square: much faster and it matches the on-screen frame.
+  const side = Math.floor(Math.min(vw, vh) * 0.8);
+  const sx = Math.floor((vw - side) / 2), sy = Math.floor((vh - side) / 2);
+  const target = 420;
+  work.width = target; work.height = target;
+  wctx.drawImage(video, sx, sy, side, side, 0, 0, target, target);
+
+  const img = wctx.getImageData(0, 0, target, target);
+  const found = jsQR(img.data, img.width, img.height, { inversionAttempts:"dontInvert" });
+  if (found?.data) handleCode(found.data);
+}
+
+function resumeScan(){ if (stream) return; startCamera(); }
+$("btnRetryCam").onclick = () => { show("scan"); startCamera(); };
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) stopCamera();
+  else if (current === "scan") startCamera();
+});
+
+/* ---- photo fallback: works on every phone, no https needed ---- */
+$("btnPhoto").onclick = () => $("photo").click();
+$("photo").addEventListener("change", async e => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  try{
+    const bmp = await createImageBitmap(file);
+    // Downscale very large photos; jsQR gets slow and no more accurate above ~1200px.
+    const scale = Math.min(1, 1200 / Math.max(bmp.width, bmp.height));
+    const w = Math.round(bmp.width * scale), h = Math.round(bmp.height * scale);
+    work.width = w; work.height = h;
+    wctx.drawImage(bmp, 0, 0, w, h);
+    const img = wctx.getImageData(0, 0, w, h);
+    const found = jsQR(img.data, w, h, { inversionAttempts:"attemptBoth" });
+    if (found?.data) handleCode(found.data);
+    else {
+      beep("bad");
+      paint("bad", "✕", "NO CODE FOUND",
+        "Try again", "Hold the phone steady and fill the frame with the QR code.", "");
+    }
+  }catch(err){
+    alert("Could not read that photo: " + err.message);
+  }
+});
+
+/* =======================================================================
+   Setup actions
+   ===================================================================== */
+async function adoptGuestList(text){
+  const data = JSON.parse(text);
+  if (!Array.isArray(data.guests) || !data.guests.length)
+    throw new Error("there is no guest list inside");
+  if (!data.guests[0].code)
+    throw new Error("there are no codes in it — generate the invitations first");
+  if (Store.guests.length &&
+      !confirm(`Replace the current list of ${Store.guests.length} guests with ${data.guests.length} guests?`))
+    return false;
+  await Store.setGuestFile(data);
+  renderHeader(); renderStats();
+  alert(`Loaded ${data.guests.length} guests. You are ready to scan.`);
+  show("scan");
+  return true;
+}
+
+$("btnLoadGuests").onclick = () => $("fileGuests").click();
+$("fileGuests").addEventListener("change", async e => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  try{ await adoptGuestList(await file.text()); }
+  catch(err){ alert("Could not read that file: " + err.message); }
+});
+
+/* Some phones make picking a .json file awkward, so the list can also be
+   pasted straight in from a message or an email. */
+const pasteUI = on => {
+  $("pasteBox").hidden = !on; $("pasteBtns").hidden = !on;
+  $("btnPasteGuests").hidden = on;
+  if (on) $("pasteBox").focus(); else $("pasteBox").value = "";
+};
+$("btnPasteGuests").onclick = () => pasteUI(true);
+$("btnPasteCancel").onclick = () => pasteUI(false);
+$("btnPasteGo").onclick = async () => {
+  try{
+    if (await adoptGuestList($("pasteBox").value.trim())) pasteUI(false);
+  }catch(err){
+    alert("That text is not a valid guest list: " + err.message);
+  }
+};
+
+const dl = (text, name, type) => {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type }));
+  a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+};
+const stamp = () => new Date().toISOString().slice(0,16).replace(/[:T]/g,"-");
+
+$("btnExport").onclick = () =>
+  dl(JSON.stringify({ exported:new Date().toISOString(), checkins:Store.checkins }, null, 2),
+     `checkins-${stamp()}.json`, "application/json");
+
+$("btnExportCsv").onclick = () => {
+  const esc = v => `"${String(v).replace(/"/g,'""')}"`;
+  const rows = Store.guests.map(g => {
+    const at = Store.checkins[g.code];
+    return [g.n ?? "", esc(g.name), g.seats || 1, g.code,
+            at ? "YES" : "NO", at ? new Date(at).toLocaleString() : ""].join(",");
+  });
+  dl("﻿" + ["Number,Name,Seats,Code,Arrived,Time"].concat(rows).join("\r\n"),
+     `checkins-${stamp()}.csv`, "text/csv;charset=utf-8");
+};
+
+$("btnImport").onclick = () => $("fileImport").click();
+$("fileImport").addEventListener("change", async e => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  try{
+    const data = JSON.parse(await file.text());
+    const incoming = data.checkins || data;
+    if (typeof incoming !== "object") throw new Error("unexpected file contents");
+    const added = await Store.merge(incoming);
+    renderHeader(); renderStats();
+    alert(`Merged. ${added} new check-in${added === 1 ? "" : "s"} added.`);
+  }catch(err){
+    alert("Could not merge that file: " + err.message);
+  }
+});
+
+$("btnReset").onclick = async () => {
+  if (!confirm("Erase every check-in? The guest list stays.")) return;
+  if (!confirm("Really erase them? This cannot be undone.")) return;
+  await Store.reset();
+  renderHeader(); renderStats(); renderList();
+};
+
+/* =======================================================================
+   Installing to the home screen
+   ===================================================================== */
+let installPrompt = null;
+const standalone = () => window.matchMedia("(display-mode: standalone)").matches
+                      || window.navigator.standalone === true;
+
+window.addEventListener("beforeinstallprompt", e => {
+  e.preventDefault();               // show our own button instead of the banner
+  installPrompt = e;
+  if (!standalone()) $("installCard").hidden = false;
+});
+
+$("btnInstall").onclick = async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  const { outcome } = await installPrompt.userChoice;
+  installPrompt = null;
+  if (outcome === "accepted") $("installCard").hidden = true;
+};
+
+window.addEventListener("appinstalled", () => {
+  installPrompt = null;
+  $("installCard").hidden = true;
+});
+
+// iPhone has no install prompt: Safari requires the user to do it by hand.
+if (!standalone() && /iPad|iPhone|iPod/.test(navigator.userAgent)){
+  $("installCard").hidden = false;
+  $("installCard").querySelector("p").innerHTML =
+    "To install: press the <b>Share</b> button at the bottom of Safari, then " +
+    "<b>Add to Home Screen</b>. The scanner then opens like any other app, with no internet.";
+  $("btnInstall").hidden = true;
+}
+
+if ("serviceWorker" in navigator && location.protocol !== "file:")
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js")
+      .catch(err => console.warn("offline mode unavailable:", err));
+  });
+
+/* =======================================================================
+   Boot
+   ===================================================================== */
+(async function boot(){
+  await Store.init();
+  renderHeader(); renderStats();
+  if (!Store.guests.length){
+    show("setup");
+    camMessage("Load the guest list first (gear icon).");
+  } else {
+    show("scan");
+  }
+  // In shared mode, pick up check-ins made at the other doors — and keep
+  // retrying after an outage until the server answers again.
+  if (Store.wasServer)
+    setInterval(async () => {
+      if (busy) return;
+      await Store.refresh();
+      renderHeader();
+      if (current === "list") renderList();
+      if (current === "setup") renderStats();
+    }, 5000);
+})();
+
+window.addEventListener("beforeunload", stopCamera);
+</script>
+</body>
+</html>
