@@ -30,11 +30,15 @@
     border-bottom:1px solid var(--line);background:var(--panel);flex:none}
   header .title{font:600 15px/1.2 Georgia,serif;letter-spacing:.4px;flex:1;min-width:0;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  header .title small{display:block;font:400 11.5px/1.4 "Segoe UI",sans-serif;color:var(--dim)}
+  header .title small{display:block;font:400 11.5px/1.4 "Segoe UI",sans-serif;color:var(--dim);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .counter{font:700 15px/1 "Segoe UI",sans-serif;text-align:right;flex:none}
   .counter span{display:block;font:400 11px/1.5 "Segoe UI",sans-serif;color:var(--dim)}
+  /* font-variant-emoji keeps the header glyphs as plain monochrome symbols;
+     Android otherwise swaps the gear for its own coloured emoji. */
   .iconbtn{flex:none;width:40px;height:40px;border-radius:10px;border:1px solid var(--line);
-    background:#26211a;color:var(--ink);font-size:19px;cursor:pointer;display:grid;place-items:center}
+    background:#26211a;color:var(--ink);font-size:19px;cursor:pointer;display:grid;place-items:center;
+    font-variant-emoji:text}
   .iconbtn:active{background:#332c23}
 
   main{flex:1;position:relative;overflow:hidden}
@@ -45,12 +49,21 @@
   #camWrap{position:relative;flex:1;background:#000;overflow:hidden}
   #video{width:100%;height:100%;object-fit:cover;display:block}
   #reticle{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
-  #reticle div{width:min(68vw,300px);aspect-ratio:1;border-radius:22px;
-    box-shadow:0 0 0 100vmax rgba(0,0,0,.45);border:2px solid rgba(216,180,95,.85)}
+  #reticle .frame{position:relative;width:min(70vw,300px);aspect-ratio:1;border-radius:20px;
+    box-shadow:0 0 0 100vmax rgba(0,0,0,.5)}
+  /* Four corner brackets rather than a full outline: it reads as a scanner and
+     keeps the middle of the picture completely clear. */
+  #reticle i{position:absolute;width:34px;height:34px;border:3px solid var(--gold)}
+  #reticle i:nth-child(1){top:-3px;left:-3px;border-right:0;border-bottom:0;border-radius:18px 0 0 0}
+  #reticle i:nth-child(2){top:-3px;right:-3px;border-left:0;border-bottom:0;border-radius:0 18px 0 0}
+  #reticle i:nth-child(3){bottom:-3px;left:-3px;border-right:0;border-top:0;border-radius:0 0 0 18px}
+  #reticle i:nth-child(4){bottom:-3px;right:-3px;border-left:0;border-top:0;border-radius:0 0 18px 0}
   #camNote{position:absolute;left:0;right:0;bottom:0;padding:14px 18px 18px;text-align:center;
     color:var(--dim);font-size:13px;background:linear-gradient(transparent,rgba(0,0,0,.75))}
+  /* Opaque on purpose. This is a state of its own, never text floating over a
+     working picture. */
   .camoff{position:absolute;inset:0;display:grid;place-items:center;padding:26px;text-align:center;
-    color:var(--dim);font-size:14px;line-height:1.65}
+    color:var(--dim);font-size:14px;line-height:1.65;background:var(--bg)}
 
   .tools{flex:none;display:flex;gap:8px;padding:10px;padding-bottom:calc(10px + env(safe-area-inset-bottom));
     border-top:1px solid var(--line);background:var(--panel)}
@@ -60,12 +73,13 @@
   .tools button{padding:12px 15px;border-radius:10px;border:1px solid var(--line);
     background:#26211a;color:var(--ink);font:600 14px/1 inherit;cursor:pointer;flex:none}
   .tools button.go{background:var(--gold);border-color:var(--gold);color:#221b0d}
+  .tools button svg{display:block}
 
   /* ---- result overlay ---- */
   #result{position:absolute;inset:0;z-index:20;display:none;flex-direction:column;
     align-items:center;justify-content:center;text-align:center;padding:26px;cursor:pointer}
   #result.on{display:flex}
-  #result .mark{font-size:76px;line-height:1;margin-bottom:8px}
+  #result .mark{font-size:76px;line-height:1;margin-bottom:8px;font-variant-emoji:text}
   #result .verdict{font:800 27px/1.15 "Segoe UI",sans-serif;letter-spacing:.5px;margin-bottom:20px}
   #result .name{font:700 34px/1.2 Georgia,serif;word-break:break-word;max-width:14ch}
   #result .sub{margin-top:12px;font-size:16px;opacity:.9}
@@ -119,7 +133,7 @@
   <div class="title" id="evTitle">Entrance Scanner<small id="evSub">No guest list loaded</small></div>
   <div class="counter" id="count">0<span>checked in</span></div>
   <button class="iconbtn" id="tabList" title="Guest list">&#9776;</button>
-  <button class="iconbtn" id="tabSetup" title="Setup">&#9881;</button>
+  <button class="iconbtn" id="tabSetup" title="Setup">&#9881;&#xFE0E;</button>
 </header>
 
 <main>
@@ -127,15 +141,21 @@
   <section class="view on" id="vScan">
     <div id="camWrap">
       <video id="video" playsinline muted></video>
-      <div id="reticle" hidden><div></div></div>
-      <div class="camoff" id="camoff">Loading…</div>
+      <div id="reticle" hidden><div class="frame"><i></i><i></i><i></i><i></i></div></div>
+      <div class="camoff" id="camoff">Loading&hellip;</div>
       <div id="camNote" hidden>Hold the guest's QR code inside the frame</div>
     </div>
     <div class="tools">
       <input id="manual" placeholder="Or type the code" autocomplete="off"
              autocapitalize="characters" spellcheck="false" inputmode="text">
       <button class="go" id="btnManual">Check</button>
-      <button id="btnPhoto">&#128247;</button>
+      <button id="btnPhoto" title="Photograph the code" aria-label="Photograph the code">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+             stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 8.6A1.6 1.6 0 0 1 4.6 7h2.1l1.1-1.7a1 1 0 0 1 .8-.4h6.8a1 1 0 0 1 .8.4L17.3 7h2.1A1.6 1.6 0 0 1 21 8.6v8.8a1.6 1.6 0 0 1-1.6 1.6H4.6A1.6 1.6 0 0 1 3 17.4z"/>
+          <circle cx="12" cy="13" r="3.3"/>
+        </svg>
+      </button>
       <input type="file" id="photo" accept="image/*" capture="environment" hidden>
     </div>
     <div id="result" tabindex="-1">
@@ -213,8 +233,8 @@
 
       <div class="card">
         <h3>Camera</h3>
-        <p id="camHelp">If live scanning is unavailable, use the
-          <b>&#128247;</b> button on the scan screen to take a photo of the code instead,
+        <p id="camHelp">If live scanning is unavailable, use the <b>camera button</b>
+          next to the code box on the scan screen to photograph the code instead,
           or type the code printed under the QR. Both work exactly the same.</p>
         <div class="btns"><button id="btnRetryCam">Restart camera</button></div>
       </div>
@@ -579,7 +599,9 @@ async function handleCode(raw){
       out.guest.seats > 1 ? `${out.guest.seats} people` : "1 person", code);
   } else if (out.status === "used"){
     beep("used");
-    paint("warn", "⚠", "ALREADY USED", out.guest.name,
+    // U+FE0E keeps the triangle as a plain glyph in the theme colour; without it
+    // Android substitutes its own yellow emoji.
+    paint("warn", "⚠︎", "ALREADY USED", out.guest.name,
       `This invitation was already scanned at ${fmtTime(out.at)}`, code);
   } else if (out.status === "invalid"){
     beep("bad");
@@ -633,33 +655,51 @@ function camMessage(html){
   $("camNote").hidden = true;
 }
 
+// Nothing but the picture and the corner brackets once the camera is running.
+function cameraRunning(){
+  camoff.hidden = true;
+  $("reticle").hidden = false;
+  $("camNote").hidden = false;
+  loop();
+}
+
 async function startCamera(){
   stopCamera();
   if (!navigator.mediaDevices?.getUserMedia){
     camMessage(`Live camera is not available here.<br><br>
-      Use the <b>&#128247;</b> button below to photograph the code,
+      Use the camera button below to photograph the code,
       or type the code printed under it.`);
     return;
   }
-  camMessage("Starting the camera…");
+  camMessage("Starting the camera&hellip;");
   try{
     stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode:{ ideal:"environment" }, width:{ ideal:1280 }, height:{ ideal:720 } },
       audio: false
     });
     video.srcObject = stream;
-    await video.play();
-    camoff.hidden = true;
-    $("reticle").hidden = false;
-    $("camNote").hidden = false;
-    loop();
+    try{
+      await video.play();
+    }catch(playErr){
+      // Some phones refuse to start playback until the screen is touched. The
+      // camera itself is fine here, so ask for the tap instead of reporting a
+      // failure over a picture that is actually working.
+      camMessage("Tap anywhere to start the camera");
+      camoff.style.pointerEvents = "auto";
+      camoff.addEventListener("click", async () => {
+        camoff.style.pointerEvents = "";
+        try{ await video.play(); cameraRunning(); }
+        catch(e){ camMessage("The camera could not start. Use the camera button below, or type the code."); }
+      }, { once:true });
+      return;
+    }
+    cameraRunning();
   }catch(err){
     const secure = window.isSecureContext;
     camMessage(
       `Camera unavailable &mdash; ${err.name === "NotAllowedError" ? "permission was refused" : err.name}.` +
-      (!secure ? `<br><br>Phones only allow the live camera on an <b>https://</b> page.
-                  Start <b>server.js</b> on the laptop and open the address it prints.` : "") +
-      `<br><br>You can still use the <b>&#128247;</b> photo button or type the code &mdash;
+      (!secure ? `<br><br>Phones only allow the live camera on an <b>https://</b> page.` : "") +
+      `<br><br>You can still use the camera button below or type the code &mdash;
        both check the guest exactly the same way.`);
   }
 }
